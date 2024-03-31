@@ -51,7 +51,10 @@ impl Pos {
         return self;
     }
     pub fn to_pos(&self) -> Self {
-        return Self {x: self.x, y: self.y};
+        return Self {
+            x: self.x,
+            y: self.y,
+        };
     }
 }
 

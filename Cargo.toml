@@ -1,5 +1,5 @@
 [package]
-name = "simple_tui"
+name = "text_editor"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 crossterm = "0.27.0"
+mlua = { version = "0.9.1", features = ["lua54", "vendored"] }
