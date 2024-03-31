@@ -19,8 +19,6 @@ fn get_file(location: &str) -> String {
     }
 }
 
-const TEST_PLUGIN: &str = "D:/programming/Rust Projects/Projects/text_editor/test plugin.lua";
-
 fn main() {
     reset_color();
     clear();
@@ -29,7 +27,7 @@ fn main() {
     let mut mode = Modes::Normal;
     let mut pos = Pos::from(0, 0);
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
-    let plugin = Plugin::from(get_file(TEST_PLUGIN).as_str());
+    let plugin = Plugin::from("");
     show_text(&text, &plugin);
     loop {
         if exit {
