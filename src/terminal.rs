@@ -2,12 +2,13 @@ pub use crossterm::event::KeyCode;
 pub use crossterm::event::KeyEventKind;
 pub use crossterm::style::Color;
 use crossterm::{
-    cursor::{position, MoveTo, SetCursorStyle},
+    cursor::{position, Hide, MoveTo, SetCursorStyle, Show},
     event::{self, Event, KeyEvent},
     execute,
     style::{ResetColor, SetBackgroundColor, SetForegroundColor},
-    terminal::{disable_raw_mode, enable_raw_mode},
-    terminal::{Clear, ClearType},
+    terminal::{
+        self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+    },
 };
 
 pub fn set_cursor(pos: Pos) {
@@ -28,6 +29,10 @@ pub fn get_cursor() -> Pos {
         Err(_) => (0, 0),
     };
     return Pos { x, y };
+}
+
+pub fn clear_line(line: u16) {
+    clear_lines(line, line);
 }
 
 pub struct Pos {
@@ -71,9 +76,15 @@ pub fn reset_color() {
 }
 
 pub fn clear() {
-    execute!(std::io::stdout(), Clear(ClearType::All)).expect("Failed to clear terminal");
-    print!("\x1B[2J");
+    clear_lines(0, term_size().1);
     set_cursor(Pos::from(0, 0));
+}
+
+fn clear_lines(start_y: u16, end_y: u16) {
+    for y in start_y..=end_y {
+        set_cursor(Pos::from(0, y));
+        print!("{}[K", 27 as char);
+    }
 }
 
 pub struct Key {
@@ -130,4 +141,28 @@ impl CursorStyle {
 
 pub fn set_cursor_style(style: CursorStyle) {
     execute!(std::io::stdout(), style.to_cursor_style()).expect("Failed to set the Cursor");
+}
+
+pub fn term_size() -> (u16, u16) {
+    if let Ok((width, height)) = terminal::size() {
+        (width, height)
+    } else {
+        (0, 0)
+    }
+}
+
+pub fn hide_cursor() {
+    execute!(std::io::stdout(), Hide).expect("Failed to hide the Cursor");
+}
+
+pub fn show_cursor() {
+    execute!(std::io::stdout(), Show).expect("Failed to hide the Cursor");
+}
+
+pub fn use_alt() {
+    execute!(std::io::stdout(), EnterAlternateScreen).expect("Failed to switch to alt screen");
+}
+
+pub fn use_main() {
+    execute!(std::io::stdout(), LeaveAlternateScreen).expect("Failed to switch to main screen");
 }

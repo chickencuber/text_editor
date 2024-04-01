@@ -1,44 +1,70 @@
 pub mod terminal;
-use std::vec;
+use std::{env, fs, vec};
 
 use terminal::{
-    clear, disable, enable, key, reset_color, set_color, set_cursor, set_cursor_style, Color,
-    CursorStyle, KeyCode, KeyEventKind, Pos,
+    clear_line, disable, enable, key, reset_color, set_color, set_cursor, set_cursor_style,
+    term_size, Color, CursorStyle, KeyCode, KeyEventKind, Pos,
 };
-
-use std::fs;
 
 fn get_file(location: &str) -> String {
     match fs::read_to_string(location) {
-        Ok(contents) => {
-            return contents
-        }
+        Ok(contents) => return contents,
         Err(_) => {
             return String::from("");
         }
     }
 }
 
+fn load_text(text: &mut Vec<Vec<char>>, file: &str) {
+    let file_vec: Vec<char> = file.chars().collect();
+    let mut y: usize = 0;
+    for c in file_vec.iter() {
+        if *c == '\n' || *c == '\r' {
+            text.push(Vec::new());
+            y += 1;
+        } else {
+            if let Some(l) = text.get_mut(y) {
+                l.push(*c);
+            }
+        }
+    }
+}
+
 fn main() {
+    use_alt();
     reset_color();
-    clear();
     enable();
     let mut exit = false;
     let mut mode = Modes::Normal;
     let mut pos = Pos::from(0, 0);
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
+    let mut scroll: u16 = 0;
     let plugin = Plugin::from("");
-    show_text(&text, &plugin);
+
+    let args: Vec<String> = env::args().collect();
+
+    if let Some(file) = args.get(1) {
+        load_text(&mut text, get_file(file.as_str()).as_str());
+    }
+
+    show_text(&text, &plugin, &scroll, &pos);
     loop {
         if exit {
             break;
         }
-        update(&mut exit, &mut mode, &mut pos, &mut text, &plugin);
+        update(
+            &mut exit,
+            &mut mode,
+            &mut pos,
+            &mut text,
+            &plugin,
+            &mut scroll,
+        );
     }
     disable();
     reset_color();
-    clear();
     set_cursor_style(CursorStyle::DefaultUserShape);
+    use_main();
 }
 
 enum Modes {
@@ -53,12 +79,13 @@ fn update(
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
     plugin: &Plugin,
+    scroll: &mut u16,
 ) {
     set_cursor(pos.to_pos());
     match *mode {
-        Modes::Normal => normal(exit, mode, pos, text, plugin),
-        Modes::Insert => insert(mode, pos, text, plugin),
-        Modes::Replace => replace(mode, pos, text, plugin),
+        Modes::Normal => normal(exit, mode, pos, text, plugin, scroll),
+        Modes::Insert => insert(mode, pos, text, plugin, scroll),
+        Modes::Replace => replace(mode, pos, text, plugin, scroll),
     }
     set_cursor(pos.to_pos());
 }
@@ -69,6 +96,7 @@ fn normal(
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
     plugin: &Plugin,
+    scroll: &mut u16,
 ) {
     set_cursor_style(CursorStyle::BlinkingBlock);
     if let Some(k) = key() {
@@ -83,7 +111,7 @@ fn normal(
                     }
                 }
                 KeyCode::Right => {
-                    if pos.x < x_size(text, pos.y) {
+                    if pos.x < x_size(text, pos.y + *scroll) {
                         pos.x += 1;
                     }
                 }
@@ -93,7 +121,7 @@ fn normal(
                     }
                 }
                 KeyCode::Down => {
-                    if pos.y < (text.len() - 1).try_into().expect("conversion failed") {
+                    if pos.y + *scroll < (text.len() - 1).try_into().expect("conversion failed") {
                         pos.y += 1;
                     }
                 }
@@ -101,12 +129,19 @@ fn normal(
                 KeyCode::End => pos.x = x_size(text, pos.y),
                 _ => {}
             }
-            show_text(text, plugin);
+            calculate_scroll(scroll, pos, text);
+            show_text(text, plugin, scroll, pos);
         }
     }
 }
 
-fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &Plugin) {
+fn insert(
+    mode: &mut Modes,
+    pos: &mut Pos,
+    text: &mut Vec<Vec<char>>,
+    plugin: &Plugin,
+    scroll: &mut u16,
+) {
     set_cursor_style(CursorStyle::BlinkingBar);
     if let Some(k) = key() {
         if let Some(key) = k.filter(KeyEventKind::Release) {
@@ -114,31 +149,33 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                 KeyCode::Insert => *mode = Modes::Replace,
                 KeyCode::Esc => *mode = Modes::Normal,
                 KeyCode::Char(c) => {
-                    let l = text.get_mut(usize::from(pos.y));
+                    let l = text.get_mut(usize::from(pos.y + *scroll));
                     if let Some(line) = l {
                         line.insert(usize::from(pos.x), c);
                         pos.x += 1;
                     }
                 }
                 KeyCode::Enter => {
-                    if let Some(l) = text.get_mut(usize::from(pos.y)) {
+                    if let Some(l) = text.get_mut(usize::from(pos.y + *scroll)) {
                         let h = l.drain(0..usize::from(pos.x)).collect();
                         let len = l.len();
                         set_cursor(Pos::from(0, pos.y));
                         print!("{}", "     ".repeat(len));
-                        text.insert(usize::from(pos.y), h);
+                        text.insert(usize::from(pos.y + *scroll), h);
                         pos.y += 1;
                         pos.x = 0;
                     }
                 }
                 KeyCode::Backspace => {
                     let mut a: Option<Vec<char>> = None;
-                    if let Some(l) = text.get_mut(usize::from(pos.y)) {
+                    if let Some(l) = text.get_mut(usize::from(pos.y + *scroll)) {
                         if pos.x == 0 {
-                            if pos.y != 0 {
+                            if pos.y + *scroll != 0 {
                                 let len = l.len();
                                 a = Some(l.clone());
-                                text.drain(usize::from(pos.y)..usize::from(pos.y + 1));
+                                text.drain(
+                                    usize::from(pos.y + *scroll)..usize::from(pos.y + 1 + *scroll),
+                                );
                                 set_cursor(Pos::from(0, pos.y));
                                 print!("{}", "     ".repeat(len));
                                 set_cursor(Pos::from(
@@ -153,7 +190,7 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                                     )))
                                 );
                                 pos.y -= 1;
-                                pos.x = x_size(text, pos.y);
+                                pos.x = x_size(text, pos.y + *scroll);
                             }
                         } else {
                             let len = l.len();
@@ -164,13 +201,13 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                         }
                     }
                     if let Some(add) = a {
-                        if let Some(pl) = text.get_mut(usize::from(pos.y)) {
+                        if let Some(pl) = text.get_mut(usize::from(pos.y + *scroll)) {
                             pl.extend(add.iter())
                         }
                     }
                 }
                 KeyCode::Tab => {
-                    let l = text.get_mut(usize::from(pos.y));
+                    let l = text.get_mut(usize::from(pos.y + *scroll));
                     if let Some(line) = l {
                         line.insert(usize::from(pos.x), ' ');
                         pos.x += 1;
@@ -184,7 +221,7 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                     }
                 }
                 KeyCode::Right => {
-                    if pos.x < x_size(text, pos.y) {
+                    if pos.x < x_size(text, pos.y + *scroll) {
                         pos.x += 1;
                     }
                 }
@@ -194,7 +231,7 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                     }
                 }
                 KeyCode::Down => {
-                    if pos.y < (text.len() - 1).try_into().expect("conversion failed") {
+                    if pos.y + *scroll < (text.len() - 1).try_into().expect("conversion failed") {
                         pos.y += 1;
                     }
                 }
@@ -202,12 +239,19 @@ fn insert(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &P
                 KeyCode::End => pos.x = x_size(text, pos.y),
                 _ => {}
             }
-            show_text(text, plugin);
+            calculate_scroll(scroll, pos, text);
+            show_text(text, plugin, scroll, pos);
         }
     }
 }
 
-fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &Plugin) {
+fn replace(
+    mode: &mut Modes,
+    pos: &mut Pos,
+    text: &mut Vec<Vec<char>>,
+    plugin: &Plugin,
+    scroll: &mut u16,
+) {
     set_cursor_style(CursorStyle::BlinkingUnderScore);
     if let Some(k) = key() {
         if let Some(key) = k.filter(KeyEventKind::Release) {
@@ -215,7 +259,7 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                 KeyCode::Insert => *mode = Modes::Insert,
                 KeyCode::Esc => *mode = Modes::Normal,
                 KeyCode::Char(c) => {
-                    let l = text.get_mut(usize::from(pos.y));
+                    let l = text.get_mut(usize::from(pos.y + *scroll));
                     if let Some(line) = l {
                         line.insert(usize::from(pos.x), c);
                         if line.len() != usize::from(pos.x + 1) {
@@ -225,12 +269,12 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                     }
                 }
                 KeyCode::Enter => {
-                    if let Some(l) = text.get_mut(usize::from(pos.y)) {
+                    if let Some(l) = text.get_mut(usize::from(pos.y + *scroll)) {
                         let h = l.drain(0..usize::from(pos.x)).collect();
                         let len = l.len();
                         set_cursor(Pos::from(0, pos.y));
                         print!("{}", "     ".repeat(len));
-                        text.insert(usize::from(pos.y), h);
+                        text.insert(usize::from(pos.y + *scroll), h);
                         pos.y += 1;
                         pos.x = 0;
                     }
@@ -239,14 +283,14 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                     if pos.x == 0 {
                         if pos.y != 0 {
                             pos.y -= 1;
-                            pos.x = x_size(text, pos.y);
+                            pos.x = x_size(text, pos.y + *scroll);
                         }
                     } else {
                         pos.x -= 1;
                     }
                 }
                 KeyCode::Tab => {
-                    let l = text.get_mut(usize::from(pos.y));
+                    let l = text.get_mut(usize::from(pos.y + *scroll));
                     if let Some(line) = l {
                         line.insert(usize::from(pos.x), ' ');
                         if line.len() != usize::from(pos.x + 1) {
@@ -266,7 +310,7 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                     }
                 }
                 KeyCode::Right => {
-                    if pos.x < x_size(text, pos.y) {
+                    if pos.x < x_size(text, pos.y + *scroll) {
                         pos.x += 1;
                     }
                 }
@@ -276,7 +320,7 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                     }
                 }
                 KeyCode::Down => {
-                    if pos.y < (text.len() - 1).try_into().expect("conversion failed") {
+                    if pos.y + *scroll < (text.len() - 1).try_into().expect("conversion failed") {
                         pos.y += 1;
                     }
                 }
@@ -284,17 +328,63 @@ fn replace(mode: &mut Modes, pos: &mut Pos, text: &mut Vec<Vec<char>>, plugin: &
                 KeyCode::End => pos.x = x_size(text, pos.y),
                 _ => {}
             }
-            show_text(text, plugin);
+            calculate_scroll(scroll, pos, text);
+            show_text(text, plugin, scroll, pos);
         }
     }
 }
 
-fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin) {
+fn calculate_scroll(scroll: &mut u16, pos: &mut Pos, text: &Vec<Vec<char>>) {
+    if !(pos.x < x_size(text, pos.y + *scroll)) {
+        pos.x = x_size(text, pos.y + *scroll);
+    }
+    let height = term_size().1;
+    let len: u16 = text.len().try_into().expect("conversion failed");
+    if len <= height {
+        *scroll = 0;
+        return;
+    }
+    if pos.y == height / 2 {
+        return;
+    }
+    if pos.y >= height / 2 {
+        if *scroll == len - height {
+            return;
+        }
+        *scroll = (*scroll).saturating_add(pos.y - height / 2);
+        pos.y = height / 2;
+    } else {
+        if *scroll == 0 {
+            return;
+        }
+        *scroll = (*scroll).saturating_sub(height / 2 - pos.y);
+        pos.y = height / 2;
+    }
+}
+
+use cond_utils::Between;
+
+fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin, scroll: &u16, pos: &Pos) {
     let flat = flatten(text);
     let tokens = plugin.tokenize(&flat);
+    let (width, height) = term_size();
+    let mut x_scroll: u16 = 0;
+    if pos.x > width + 1 {
+        x_scroll = pos.x - width + 1;
+    }
+    let area = *scroll..=*scroll + height - 1;
     if tokens.len() == flat.len() {
-        for (y, line) in text.iter().enumerate() {
-            for (x, c) in line.iter().enumerate() {
+        for (mut y, line) in text.iter().enumerate() {
+            if !y.within(usize::from(*area.start()), usize::from(*area.end())) {
+                continue;
+            }
+            y -= usize::from(*scroll);
+            clear_line(y.try_into().expect("conversion failed"));
+            for (mut x, c) in line.iter().enumerate() {
+                if !x.within(usize::from(x_scroll), usize::from(x_scroll + width - 1)) {
+                    continue;
+                }
+                x -= usize::from(x_scroll);
                 let pos = &Pos::from(
                     x.try_into().expect("conversion failed"),
                     y.try_into().expect("conversion failed"),
@@ -308,9 +398,24 @@ fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin) {
         }
     } else {
         set_color(plugin.get_default().to_color());
-        for (y, line) in text.iter().enumerate() {
-            set_cursor(Pos::from(0, y.try_into().expect("conversion failed")));
-            print!("{}", String::from_iter(line));
+        for (mut y, line) in text.iter().enumerate() {
+            if !y.within(usize::from(*area.start()), usize::from(*area.end())) {
+                continue;
+            }
+            y -= usize::from(*scroll);
+            clear_line(y.try_into().expect("conversion failed"));
+            for (mut x, c) in line.iter().enumerate() {
+                if !x.within(usize::from(x_scroll), usize::from(x_scroll + width - 1)) {
+                    continue;
+                }
+                x -= usize::from(x_scroll);
+                let pos = &Pos::from(
+                    x.try_into().expect("conversion failed"),
+                    y.try_into().expect("conversion failed"),
+                );
+                set_cursor(pos.to_pos());
+                print!("{}", c);
+            }
         }
     }
 }
@@ -341,6 +446,9 @@ fn flatten(text: &Vec<Vec<char>>) -> Vec<char> {
 
 //plugin types
 use mlua::prelude::*;
+
+use crate::terminal::{use_alt, use_main};
+
 struct Token {
     color: String,
 }
