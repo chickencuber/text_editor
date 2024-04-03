@@ -3,7 +3,7 @@ use std::{env, fs, vec};
 
 use terminal::{
     clear_line, disable, enable, key, reset_color, set_color, set_cursor, set_cursor_style,
-    term_size, Color, CursorStyle, KeyCode, KeyEventKind, Pos,
+    term_size, use_alt, use_main, Color, CursorStyle, KeyCode, KeyEventKind, Pos,
 };
 
 fn get_file(location: &str) -> String {
@@ -446,8 +446,6 @@ fn flatten(text: &Vec<Vec<char>>) -> Vec<char> {
 
 //plugin types
 use mlua::prelude::*;
-
-use crate::terminal::{use_alt, use_main};
 
 struct Token {
     color: String,
