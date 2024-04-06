@@ -2,8 +2,8 @@ pub mod terminal;
 use std::{env, fs, vec};
 
 use terminal::{
-    clear_line, disable, enable, key, reset_color, set_color, set_cursor, set_cursor_style,
-    term_size, use_alt, use_main, Color, CursorStyle, KeyCode, KeyEventKind, Pos,
+    clear_line, disable, enable, flush, key, reset_color, set_color, set_cursor, set_cursor_style,// this is a test of a thing
+    term_size, use_alt, use_main, Color, CursorStyle, KeyCode, KeyEventKind, Pos, AUTO_FLUSH,
 };
 
 fn get_file(location: &str) -> String {
@@ -31,9 +31,13 @@ fn load_text(text: &mut Vec<Vec<char>>, file: &str) {
 }
 
 fn main() {
+    unsafe {
+        AUTO_FLUSH = false;
+    }
     use_alt();
     reset_color();
     enable();
+    flush();
     let mut exit = false;
     let mut mode = Modes::Normal;
     let mut pos = Pos::from(0, 0);
@@ -60,11 +64,13 @@ fn main() {
             &plugin,
             &mut scroll,
         );
+        flush();
     }
     disable();
     reset_color();
     set_cursor_style(CursorStyle::DefaultUserShape);
     use_main();
+    flush();
 }
 
 enum Modes {
@@ -369,19 +375,25 @@ fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin, scroll: &u16, pos: &Pos) {
     let tokens = plugin.tokenize(&flat);
     let (width, height) = term_size();
     let mut x_scroll: u16 = 0;
-    if pos.x > width + 1 {
+    if pos.x > width - 1 {
         x_scroll = pos.x - width + 1;
     }
     let area = *scroll..=*scroll + height - 1;
     if tokens.len() == flat.len() {
         for (mut y, line) in text.iter().enumerate() {
             if !y.within(usize::from(*area.start()), usize::from(*area.end())) {
+                if y > usize::from(*area.end()) {
+                    break;
+                }
                 continue;
             }
             y -= usize::from(*scroll);
             clear_line(y.try_into().expect("conversion failed"));
             for (mut x, c) in line.iter().enumerate() {
                 if !x.within(usize::from(x_scroll), usize::from(x_scroll + width - 1)) {
+                    if x > usize::from(x_scroll + width - 1) {
+                        break;
+                    }
                     continue;
                 }
                 x -= usize::from(x_scroll);
@@ -400,12 +412,18 @@ fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin, scroll: &u16, pos: &Pos) {
         set_color(plugin.get_default().to_color());
         for (mut y, line) in text.iter().enumerate() {
             if !y.within(usize::from(*area.start()), usize::from(*area.end())) {
+                if y > usize::from(*area.end()) {
+                    break;
+                }
                 continue;
             }
             y -= usize::from(*scroll);
             clear_line(y.try_into().expect("conversion failed"));
             for (mut x, c) in line.iter().enumerate() {
                 if !x.within(usize::from(x_scroll), usize::from(x_scroll + width - 1)) {
+                    if x > usize::from(x_scroll + width - 1) {
+                        break;
+                    }
                     continue;
                 }
                 x -= usize::from(x_scroll);

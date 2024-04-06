@@ -4,15 +4,21 @@ pub use crossterm::style::Color;
 use crossterm::{
     cursor::{position, Hide, MoveTo, SetCursorStyle, Show},
     event::{self, Event, KeyEvent},
-    execute,
+    execute, queue,
     style::{ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{
         self, disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
     },
 };
 
+pub static mut AUTO_FLUSH: bool = true;
+
 pub fn set_cursor(pos: Pos) {
-    execute!(std::io::stdout(), MoveTo(pos.x, pos.y)).expect("Failed to set cursor position");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), MoveTo(pos.x, pos.y)).expect("Failed to set cursor position");
+        return;
+    }
+    queue!(std::io::stdout(), MoveTo(pos.x, pos.y)).expect("Failed to set cursor position");
 }
 
 pub fn enable() {
@@ -64,15 +70,27 @@ impl Pos {
 }
 
 pub fn set_color(color: Color) {
-    execute!(std::io::stdout(), SetForegroundColor(color)).expect("Failed to set color");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), SetForegroundColor(color)).expect("Failed to set color");
+        return;
+    }
+    queue!(std::io::stdout(), SetForegroundColor(color)).expect("Failed to set color");
 }
 
 pub fn set_background(color: Color) {
-    execute!(std::io::stdout(), SetBackgroundColor(color)).expect("Failed to set background");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), SetBackgroundColor(color)).expect("Failed to set background");
+        return;
+    }
+    queue!(std::io::stdout(), SetBackgroundColor(color)).expect("Failed to set background");
 }
 
 pub fn reset_color() {
-    execute!(std::io::stdout(), ResetColor).expect("Failed to reset color");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), ResetColor).expect("Failed to reset color");
+        return;
+    }
+    queue!(std::io::stdout(), ResetColor).expect("Failed to reset color");
 }
 
 pub fn clear() {
@@ -140,7 +158,11 @@ impl CursorStyle {
 }
 
 pub fn set_cursor_style(style: CursorStyle) {
-    execute!(std::io::stdout(), style.to_cursor_style()).expect("Failed to set the Cursor");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), style.to_cursor_style()).expect("Failed to set the Cursor");
+        return;
+    }
+    queue!(std::io::stdout(), style.to_cursor_style()).expect("Failed to set the Cursor");
 }
 
 pub fn term_size() -> (u16, u16) {
@@ -152,17 +174,37 @@ pub fn term_size() -> (u16, u16) {
 }
 
 pub fn hide_cursor() {
-    execute!(std::io::stdout(), Hide).expect("Failed to hide the Cursor");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), Hide).expect("Failed to hide the Cursor");
+        return;
+    }
+    queue!(std::io::stdout(), Hide).expect("Failed to hide the Cursor");
 }
 
 pub fn show_cursor() {
-    execute!(std::io::stdout(), Show).expect("Failed to hide the Cursor");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), Show).expect("Failed to show the Cursor");
+        return;
+    }
+    queue!(std::io::stdout(), Show).expect("Failed to show the Cursor");
 }
 
 pub fn use_alt() {
-    execute!(std::io::stdout(), EnterAlternateScreen).expect("Failed to switch to alt screen");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), EnterAlternateScreen).expect("Failed to switch to alt screen");
+        return;
+    }
+    queue!(std::io::stdout(), EnterAlternateScreen).expect("Failed to switch to alt screen");
 }
 
 pub fn use_main() {
-    execute!(std::io::stdout(), LeaveAlternateScreen).expect("Failed to switch to main screen");
+    if unsafe { AUTO_FLUSH } {
+        execute!(std::io::stdout(), LeaveAlternateScreen).expect("Failed to switch to main screen");
+        return;
+    }
+    queue!(std::io::stdout(), LeaveAlternateScreen).expect("Failed to switch to main screen");
+}
+
+pub fn flush() {
+    std::io::Write::flush(&mut std::io::stdout()).expect("Failed to flush");
 }
