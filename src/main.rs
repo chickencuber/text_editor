@@ -2,7 +2,7 @@ pub mod terminal;
 use std::{env, fs, vec};
 
 use terminal::{
-    clear_line, disable, enable, flush, key, reset_color, set_color, set_cursor, set_cursor_style,// this is a test of a thing
+    clear_line, disable, enable, flush, key, reset_color, set_color, set_cursor, set_cursor_style,
     term_size, use_alt, use_main, Color, CursorStyle, KeyCode, KeyEventKind, Pos, AUTO_FLUSH,
 };
 
