@@ -43,7 +43,7 @@ fn main() {
     let mut pos = Pos::from(0, 0);
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
     let mut scroll: u16 = 0;
-    let plugin = Plugin::from("");
+    let plugin = Plugin::from(&get_file("D:/programming/Rust Projects/Projects/text_editor/test plugin.lua"));
 
     let args: Vec<String> = env::args().collect();
 
@@ -132,7 +132,7 @@ fn normal(
                     }
                 }
                 KeyCode::Home => pos.x = 0,
-                KeyCode::End => pos.x = x_size(text, pos.y),
+                KeyCode::End => pos.x = x_size(text, pos.y + *scroll),
                 _ => {}
             }
             calculate_scroll(scroll, pos, text);
@@ -242,7 +242,7 @@ fn insert(
                     }
                 }
                 KeyCode::Home => pos.x = 0,
-                KeyCode::End => pos.x = x_size(text, pos.y),
+                KeyCode::End => pos.x = x_size(text, pos.y + *scroll),
                 _ => {}
             }
             calculate_scroll(scroll, pos, text);
@@ -331,7 +331,7 @@ fn replace(
                     }
                 }
                 KeyCode::Home => pos.x = 0,
-                KeyCode::End => pos.x = x_size(text, pos.y),
+                KeyCode::End => pos.x = x_size(text, pos.y + *scroll),
                 _ => {}
             }
             calculate_scroll(scroll, pos, text);
