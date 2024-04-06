@@ -15,6 +15,12 @@ fn get_file(location: &str) -> String {
     }
 }
 
+fn write_file(location: &str, text: &Vec<Vec<char>>) {
+    let flat: Vec<String> = text.iter().map(|line| line.iter().collect()).collect();
+    let formatted_text = flat.join("\n");
+    fs::write(location, formatted_text).unwrap();
+}
+
 fn load_text(text: &mut Vec<Vec<char>>, file: &str) {
     let file_vec: Vec<char> = file.chars().collect();
     let mut y: usize = 0;
@@ -43,12 +49,28 @@ fn main() {
     let mut pos = Pos::from(0, 0);
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
     let mut scroll: u16 = 0;
-    let plugin = Plugin::from(&get_file("D:/programming/Rust Projects/Projects/text_editor/test plugin.lua"));
+    let plugin = Plugin::from(&get_file(
+        "D:/programming/Rust Projects/Projects/text_editor/test plugin.lua",
+    ));
 
     let args: Vec<String> = env::args().collect();
 
+    let edit_file: &str;
+
     if let Some(file) = args.get(1) {
+        edit_file = file;
         load_text(&mut text, get_file(file.as_str()).as_str());
+    } else {
+        disable();
+        reset_color();
+        set_cursor_style(CursorStyle::DefaultUserShape);
+        use_main();
+        flush();
+        unsafe {
+            AUTO_FLUSH = true;
+        }
+        print!("please select a file");
+        return;
     }
 
     show_text(&text, &plugin, &scroll, &pos);
@@ -63,6 +85,7 @@ fn main() {
             &mut text,
             &plugin,
             &mut scroll,
+            edit_file,
         );
         flush();
     }
@@ -86,10 +109,11 @@ fn update(
     text: &mut Vec<Vec<char>>,
     plugin: &Plugin,
     scroll: &mut u16,
+    edit_file: &str,
 ) {
     set_cursor(pos.to_pos());
     match *mode {
-        Modes::Normal => normal(exit, mode, pos, text, plugin, scroll),
+        Modes::Normal => normal(exit, mode, pos, text, plugin, scroll, edit_file),
         Modes::Insert => insert(mode, pos, text, plugin, scroll),
         Modes::Replace => replace(mode, pos, text, plugin, scroll),
     }
@@ -103,6 +127,7 @@ fn normal(
     text: &mut Vec<Vec<char>>,
     plugin: &Plugin,
     scroll: &mut u16,
+    edit_file: &str,
 ) {
     set_cursor_style(CursorStyle::BlinkingBlock);
     if let Some(k) = key() {
@@ -110,6 +135,11 @@ fn normal(
             match key.key {
                 KeyCode::Char('q') => *exit = true,
                 KeyCode::Char('i') => *mode = Modes::Insert,
+                KeyCode::Char('s') => {
+                    if edit_file != "" {
+                        write_file(edit_file, text);
+                    }
+                }
                 KeyCode::Insert => *mode = Modes::Insert,
                 KeyCode::Left => {
                     if pos.x != 0 {
