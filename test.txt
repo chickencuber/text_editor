@@ -1,3 +1,0 @@
-hello world this is a test file that I made for text editing
-as you can see every feature acually works
-  this is really cool
