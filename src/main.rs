@@ -50,7 +50,7 @@ fn main() {
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
     let mut scroll: u16 = 0;
     let plugin = Plugin::from(&get_file(
-        "D:/programming/Rust Projects/Projects/text_editor/test plugin.lua",
+        "D:/programming/Rust Projects/Projects/text_editor/plugins/.txt/code_highlight.lua",
     ));
 
     let args: Vec<String> = env::args().collect();
