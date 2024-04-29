@@ -49,28 +49,28 @@ fn main() {
     let mut pos = Pos::from(0, 0);
     let mut text: Vec<Vec<char>> = vec![Vec::new()];
     let mut scroll: u16 = 0;
-    let plugin = Plugin::from(&get_file(
+
+    let mut dir: Option<String> = None;
+
+    if let Ok(f) = env::current_dir() {
+        if let Some(d) = f.to_str() {
+            dir = Some(d.to_string());
+        }
+    }
+
+    let plugin = LuaPlugin::new(&get_file(
         "D:/programming/Rust Projects/Projects/text_editor/plugins/.txt/code_highlight.lua",
     ));
 
     let args: Vec<String> = env::args().collect();
 
-    let edit_file: &str;
+    let mut edit_file: Option<&str> = None;
 
     if let Some(file) = args.get(1) {
-        edit_file = file;
+        edit_file = Some(file);
         load_text(&mut text, get_file(file.as_str()).as_str());
     } else {
-        disable();
-        reset_color();
-        set_cursor_style(CursorStyle::DefaultUserShape);
-        use_main();
-        flush();
-        unsafe {
-            AUTO_FLUSH = true;
-        }
-        print!("please select a file");
-        return;
+        mode = Modes::Files;
     }
 
     show_text(&text, &plugin, &scroll, &pos);
@@ -85,7 +85,8 @@ fn main() {
             &mut text,
             &plugin,
             &mut scroll,
-            edit_file,
+            &mut edit_file,
+            &mut dir,
         );
         flush();
     }
@@ -100,34 +101,49 @@ enum Modes {
     Normal,
     Insert,
     Replace,
+    Files,
 }
 
-fn update(
+fn update<P: Plugin>(
     exit: &mut bool,
     mode: &mut Modes,
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
-    plugin: &Plugin,
+    plugin: &P,
     scroll: &mut u16,
-    edit_file: &str,
-) {
+    edit_file: &mut Option<&str>,
+    dir: &mut Option<String>,
+    ){
     set_cursor(pos.to_pos());
     match *mode {
         Modes::Normal => normal(exit, mode, pos, text, plugin, scroll, edit_file),
         Modes::Insert => insert(mode, pos, text, plugin, scroll),
         Modes::Replace => replace(mode, pos, text, plugin, scroll),
+        Modes::Files => files(mode, pos, scroll, dir),
+        _ => *exit = true,
     }
     set_cursor(pos.to_pos());
 }
 
-fn normal(
+fn files(mode: &mut Modes, pos: &mut Pos, scroll: &mut u16, dir: &mut Option<String>) {
+   if let Some(k) = key() {
+       if let Some(key) = k.filter(KeyEventKind::Release) {
+           match key.key {
+               KeyCode::Esc => *mode = Modes::Normal,
+                _ => {}
+           }
+       }
+   }
+}
+
+fn normal<P: Plugin>(
     exit: &mut bool,
     mode: &mut Modes,
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
-    plugin: &Plugin,
+    plugin: &P,
     scroll: &mut u16,
-    edit_file: &str,
+    edit_file: &Option<&str>,
 ) {
     set_cursor_style(CursorStyle::BlinkingBlock);
     if let Some(k) = key() {
@@ -136,27 +152,28 @@ fn normal(
                 KeyCode::Char('q') => *exit = true,
                 KeyCode::Char('i') => *mode = Modes::Insert,
                 KeyCode::Char('s') => {
-                    if edit_file != "" {
-                        write_file(edit_file, text);
+                    if let Some(f) = edit_file {
+                        write_file(f, text);
                     }
-                }
+                },
+                KeyCode::Char('f') => *mode = Modes::Files,
                 KeyCode::Insert => *mode = Modes::Insert,
-                KeyCode::Left => {
+                KeyCode::Left | KeyCode::Char('h') => {
                     if pos.x != 0 {
                         pos.x -= 1;
                     }
                 }
-                KeyCode::Right => {
+                KeyCode::Right | KeyCode::Char('l') => {
                     if pos.x < x_size(text, pos.y + *scroll) {
                         pos.x += 1;
                     }
                 }
-                KeyCode::Up => {
+                KeyCode::Up | KeyCode::Char('k') => {
                     if pos.y != 0 {
                         pos.y -= 1;
                     }
                 }
-                KeyCode::Down => {
+                KeyCode::Down | KeyCode::Char('j') => {
                     if pos.y + *scroll < (text.len() - 1).try_into().expect("conversion failed") {
                         pos.y += 1;
                     }
@@ -171,11 +188,11 @@ fn normal(
     }
 }
 
-fn insert(
+fn insert<P: Plugin>(
     mode: &mut Modes,
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
-    plugin: &Plugin,
+    plugin: &P,
     scroll: &mut u16,
 ) {
     set_cursor_style(CursorStyle::BlinkingBar);
@@ -281,11 +298,11 @@ fn insert(
     }
 }
 
-fn replace(
+fn replace<P: Plugin>(
     mode: &mut Modes,
     pos: &mut Pos,
     text: &mut Vec<Vec<char>>,
-    plugin: &Plugin,
+    plugin: &P,
     scroll: &mut u16,
 ) {
     set_cursor_style(CursorStyle::BlinkingUnderScore);
@@ -400,7 +417,7 @@ fn calculate_scroll(scroll: &mut u16, pos: &mut Pos, text: &Vec<Vec<char>>) {
 
 use cond_utils::Between;
 
-fn show_text(text: &Vec<Vec<char>>, plugin: &Plugin, scroll: &u16, pos: &Pos) {
+fn show_text<P: Plugin>(text: &Vec<Vec<char>>, plugin: &P, scroll: &u16, pos: &Pos) {
     let flat = flatten(text);
     let tokens = plugin.tokenize(&flat);
     let (width, height) = term_size();
@@ -523,14 +540,20 @@ impl Token {
     }
 }
 
-struct Plugin {
+trait Plugin {
+    fn tokenize(&self, text: &Vec<char>) -> Vec<Token>;
+    fn get_default(&self) -> Token;
+    fn new(script: &str) -> Self;
+}
+
+struct LuaPlugin {
     lua: Lua,
 }
 
-impl Plugin {
-    pub fn tokenize(&self, text: &Vec<char>) -> Vec<Token> {
-        if self.lua.globals().contains_key("tokenize").unwrap() {
-            let func: LuaFunction = self.lua.globals().get("tokenize").unwrap();
+impl Plugin for LuaPlugin {
+    fn tokenize(&self, text: &Vec<char>) -> Vec<Token> {
+        if self.lua.globals().contains_key("Tokenize").unwrap() {
+            let func: LuaFunction = self.lua.globals().get("Tokenize").unwrap();
             let f = text.iter().map(|v| v.to_string()).collect();
             let r = func.call::<Vec<String>, Vec<String>>(f).unwrap();
             r.iter()
@@ -542,9 +565,9 @@ impl Plugin {
             Vec::new()
         }
     }
-    pub fn get_default(&self) -> Token {
-        if self.lua.globals().contains_key("get_default").unwrap() {
-            let func: LuaFunction = self.lua.globals().get("get_default").unwrap();
+    fn get_default(&self) -> Token {
+        if self.lua.globals().contains_key("Get_default").unwrap() {
+            let func: LuaFunction = self.lua.globals().get("Get_default").unwrap();
             let r = func.call::<_, String>(()).unwrap();
             Token { color: r }
         } else {
@@ -553,9 +576,9 @@ impl Plugin {
             }
         }
     }
-    pub fn from(script: &str) -> Self {
+    fn new(script: &str) -> Self {
         let lua = Lua::new();
         lua.load(script).exec().unwrap();
-        Self { lua: lua }
+        Self { lua }
     }
 }

@@ -3,11 +3,11 @@ Tokens = {
     Test = "Yellow",
 }
 
-function get_default()
+function Get_default()
     return Tokens.Default
 end
 
-function tokenize(chars)
+function Tokenize(chars)
     local tokenarr = {}
     local t = ""
 
