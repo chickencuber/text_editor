@@ -125,6 +125,7 @@ fn update<P: Plugin>(
     set_cursor(pos.to_pos());
 }
 
+
 fn files(mode: &mut Modes, pos: &mut Pos, scroll: &mut u16, dir: &mut Option<String>) {
    if let Some(k) = key() {
        if let Some(key) = k.filter(KeyEventKind::Release) {
