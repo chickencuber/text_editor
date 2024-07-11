@@ -1,3 +1,20 @@
-fn main() {
+mod terminal;
 
+use terminal::{Buffer, KeyEventKind, Terminal, KeyCode};
+
+fn main() {
+    Terminal::use_alt();
+    let mut buf = Buffer::new();
+    buf.println("Hello World!");
+    Terminal::flush(&buf);
+    loop {
+        if let Some(key) = Terminal::key() {
+            if let Some(k) = key.only(KeyEventKind::Press) {
+                if k.key == KeyCode::Char('q') {
+                    break;
+                }
+            }
+        }
+    }
+    Terminal::use_main();
 }
