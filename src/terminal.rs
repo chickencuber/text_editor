@@ -238,24 +238,6 @@ pub struct Renderable_Colors {
     pub text: String,
 }
 
-impl Renderable_Colors {
-    pub fn count(&self) -> (usize, usize) {
-        let mut y = 0;
-        let mut x = 0;
-
-        for c in self.text.chars() {
-            if c == '\n' {
-                y += 1;
-                x = 0;
-            } else {
-                x += 1;
-            }
-        }
-
-        return (x, y)
-    }
-}
-
 pub struct Buffer {
     pub buf: Vec<Vec<Colors>>,
     pub pos: Pos,
@@ -338,19 +320,21 @@ impl Buffer {
 }
 
 pub mod Terminal {
-    use super::{helper::{self, Pos, set_cursor, set_color}, Buffer};
-    pub use super::helper::{use_alt, use_main, key};
-    pub fn flush(buf: &Buffer)  {
+    pub use super::helper::{key, use_alt, use_main, set_cursor, set_cursor_style, hide_cursor, show_cursor, get_cursor};
+    use super::{
+        helper::{self, set_color},
+        Buffer,
+    };
+    pub fn flush(buf: &Buffer) {
         let render = buf.into_renderable();
-        let mut pos = Pos::from(0, 0);
+        let pre = get_cursor();
+        hide_cursor();
         for text in render.iter() {
-            set_cursor(pos.clone());
             set_color(text.color);
             print!("{}", text.text);
-            let (x, y) = text.count();
-            pos.x += x as u16;
-            pos.y += y as u16;
         }
+        set_cursor(pre);
+        show_cursor();
         helper::flush();
     }
 }

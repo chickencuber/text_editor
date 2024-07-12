@@ -1,11 +1,13 @@
 mod terminal;
 
-use terminal::{Buffer, KeyEventKind, Terminal, KeyCode};
+use terminal::{Buffer, KeyEventKind, Terminal, KeyCode, Color};
 
 fn main() {
     Terminal::use_alt();
     let mut buf = Buffer::new();
     buf.println("Hello World!");
+    buf.set_color(Color::Yellow);
+    buf.print("hi");
     Terminal::flush(&buf);
     loop {
         if let Some(key) = Terminal::key() {
